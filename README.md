@@ -35,10 +35,11 @@ Click the trash-can icon in the toolbar. A notification will confirm how many em
 
 ## Settings
 
-| Setting           | Default | Description                                                        |
-| ----------------- | ------- | ------------------------------------------------------------------ |
-| Days to look back | `30`    | Number of past days to scan. Set to `0` to scan all journal pages. |
-| Dry run           | `true`  | Counts empty journals without deleting them. Turn off to actually delete. |
+| Setting                              | Default | Description                                                                                                                                  |
+| ------------------------------------ | ------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Days to look back                    | `10`    | Number of past days to scan. Set to `0` to scan all journal pages.                                                                           |
+| Dry run                              | `true`  | Counts empty journals without deleting them. Turn off to actually delete.                                                                    |
+| Trim leading/trailing empty blocks   | `false` | When enabled, also remove consecutive empty blocks at the top and bottom of each in-scope journal page. Today's journal is excluded; middle empty blocks are preserved. |
 
 Settings are accessible via Logseq → `...` → Plugins → Clean Empty Journals → Settings.
 

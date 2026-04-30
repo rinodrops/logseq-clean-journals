@@ -1,27 +1,87 @@
 import "@logseq/libs";
 
+function isEmptyBlock(block) {
+  if (!block) return false;
+  if (block.children && block.children.length > 0) return false;
+  return !block.content || block.content.trim() === "";
+}
+
+async function trimJournalPage(page, dryRun) {
+  const blocks = await logseq.Editor.getPageBlocksTree(page.name);
+  if (!blocks || blocks.length === 0) return 0;
+
+  const trimTargets = [];
+
+  // Leading empty blocks
+  for (let i = 0; i < blocks.length; i++) {
+    if (isEmptyBlock(blocks[i])) trimTargets.push(blocks[i]);
+    else break;
+  }
+
+  // Stop if every block is empty (the page itself is empty;
+  // leave it for the page-deletion pass to handle).
+  if (trimTargets.length === blocks.length) return 0;
+
+  // Trailing empty blocks
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    if (isEmptyBlock(blocks[i])) trimTargets.push(blocks[i]);
+    else break;
+  }
+
+  if (!dryRun) {
+    for (const b of trimTargets) {
+      await logseq.Editor.removeBlock(b.uuid);
+    }
+  }
+  return trimTargets.length;
+}
+
 async function deleteEmptyJournals() {
   const settings = logseq.settings || {};
   const daysBack = parseInt(settings.daysBack ?? 10, 10) || 0;
   const dryRun = settings.dryRun ?? false;
+  const trimEmptyBlocks = settings.trimEmptyBlocks ?? false;
 
   const today = new Date();
-  const todayStr = today.toISOString().slice(0, 10);
+  const todayJDay =
+    today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
 
-  const cutoff = daysBack > 0
-    ? new Date(today.getTime() - daysBack * 86400000)
-    : null;
+  // Compute cutoff as a journal-day integer (YYYYMMDD) to match Logseq's
+  // representation and avoid timezone drift.
+  let cutoffJDay = null;
+  if (daysBack > 0) {
+    const c = new Date(today.getFullYear(), today.getMonth(), today.getDate() - daysBack);
+    cutoffJDay = c.getFullYear() * 10000 + (c.getMonth() + 1) * 100 + c.getDate();
+  }
 
   const pages = await logseq.Editor.getAllPages();
   const journals = (pages || []).filter((p) => {
-    if (!p["journal?"] || p.name === todayStr) return false;
-    if (cutoff && p["journal-day"]) {
-      const d = String(p["journal-day"]);
-      const pageDate = new Date(`${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`);
-      if (pageDate < cutoff) return false;
-    }
+    // Logseq's API returns these in camelCase (e.g. journalDay), but older
+    // versions/builds have used kebab-case keys. Accept both for safety.
+    const isJournal = p["journal?"] ?? p.journal ?? false;
+    if (!isJournal) return false;
+    // Require journal-day so date comparisons are reliable; pages without it
+    // are skipped to avoid silently bypassing the look-back window.
+    const jday = p["journal-day"] ?? p.journalDay;
+    if (!jday) return false;
+    if (jday === todayJDay) return false;
+    if (cutoffJDay !== null && jday < cutoffJDay) return false;
     return true;
   });
+
+  // Trim leading/trailing empty blocks first, so a page that becomes empty
+  // can still be picked up by the deletion pass below.
+  let trimmedBlockCount = 0;
+  const trimmedPages = [];
+  if (trimEmptyBlocks) {
+    for (const page of journals) {
+      const n = await trimJournalPage(page, dryRun);
+      if (n > 0) {
+        trimmedBlockCount += n;
+        trimmedPages.push({ name: page.name, count: n });
+      }
+    }
+  }
 
   const targets = [];
   for (const page of journals) {
@@ -42,24 +102,36 @@ async function deleteEmptyJournals() {
   console.group("[logseq-clean-journals]");
   console.log(`Mode: ${dryRun ? "Dry run" : "Delete"}`);
   console.log(`Range: ${daysBack > 0 ? `last ${daysBack} days` : "all"}`);
-  console.log(`Target count: ${count}`);
-  if (count > 0) console.log("Targets:", targets);
+  if (trimEmptyBlocks) {
+    console.log(`Trimmed empty blocks: ${trimmedBlockCount} across ${trimmedPages.length} page(s)`);
+    if (trimmedPages.length > 0) console.log("Trimmed pages:", trimmedPages);
+  }
+  console.log(`Deleted page count: ${count}`);
+  if (count > 0) console.log("Deleted targets:", targets);
   console.groupEnd();
+
+  const trimSummary = trimEmptyBlocks
+    ? (trimmedBlockCount > 0
+        ? `${trimmedBlockCount} empty block(s) ${dryRun ? "would be trimmed" : "trimmed"} from ${trimmedPages.length} page(s).\n\n`
+        : `No leading/trailing empty blocks found${rangeLabel}.\n\n`)
+    : "";
 
   if (dryRun) {
     if (count > 0) {
       const list = targets.map((n) => `- ${n}`).join("\n");
       logseq.App.showMsg(
-        `DRY RUN MODE. Nothing was deleted.\n\n` +
+        `DRY RUN MODE. Nothing was changed.\n\n` +
+          trimSummary +
           `${count} empty journal(s) would be deleted${rangeLabel}:\n` +
           `${list}\n\n` +
-          `To actually delete, uncheck "Dry run" in plugin settings.`,
+          `To actually apply changes, uncheck "Dry run" in plugin settings.`,
         "warning",
         { timeout: 0 }
       );
     } else {
       logseq.App.showMsg(
-        `DRY RUN MODE. Nothing was deleted.\n\n` +
+        `DRY RUN MODE. Nothing was changed.\n\n` +
+          trimSummary +
           `No empty journals found${rangeLabel}.`,
         "warning",
         { timeout: 0 }
@@ -67,9 +139,14 @@ async function deleteEmptyJournals() {
     }
   } else {
     logseq.App.showMsg(
-      count > 0
+      (count > 0
         ? `Deleted ${count} empty journal(s)${rangeLabel}.`
-        : `No empty journals found${rangeLabel}.`,
+        : `No empty journals found${rangeLabel}.`) +
+        (trimEmptyBlocks
+          ? (trimmedBlockCount > 0
+              ? `\nTrimmed ${trimmedBlockCount} empty block(s) from ${trimmedPages.length} page(s).`
+              : `\nNo leading/trailing empty blocks found.`)
+          : ""),
       "success"
     );
   }
@@ -90,6 +167,13 @@ function main() {
       default: true,
       title: "Dry run",
       description: "If enabled, only counts empty journals without deleting them. Turn off to actually delete.",
+    },
+    {
+      key: "trimEmptyBlocks",
+      type: "boolean",
+      default: false,
+      title: "Trim leading/trailing empty blocks",
+      description: "If enabled, also remove consecutive empty blocks at the top and bottom of each in-scope journal page. Today's journal is excluded. Empty blocks in the middle are preserved.",
     },
   ]);
 
