@@ -1,0 +1,46 @@
+{
+  "name": "logseq-clean-journals",
+  "version": "0.2.0",
+  "description": "Automatically removes empty journal pages from your Logseq graph with a single toolbar click.",
+  "author": "Rino",
+  "license": "MIT",
+  "homepage": "https://emotiongraphics.jp",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rinodrops/logseq-clean-journals.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rinodrops/logseq-clean-journals/issues"
+  },
+  "keywords": [
+    "logseq",
+    "logseq-plugin",
+    "journal",
+    "cleanup"
+  ],
+  "main": "index.html",
+  "files": [
+    "index.html",
+    "dist",
+    "icon.png",
+    "assets",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "esbuild src/main.js --bundle --minify --outfile=dist/main.js",
+    "dev": "esbuild src/main.js --bundle --outfile=dist/main.js --watch"
+  },
+  "dependencies": {
+    "@logseq/libs": "^0.3.3"
+  },
+  "devDependencies": {
+    "esbuild": "^0.21.0"
+  },
+  "logseq": {
+    "id": "logseq-clean-journals",
+    "title": "Clean Empty Journals",
+    "icon": "icon.png"
+  }
+}

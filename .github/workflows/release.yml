@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Read plugin id
+        id: meta
+        run: |
+          echo "id=$(node -p "require('./package.json').logseq.id")" >> "$GITHUB_OUTPUT"
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Package release zip
+        run: |
+          mkdir -p release-staging/${{ steps.meta.outputs.id }}
+          cp -r index.html dist icon.png assets package.json README.md CHANGELOG.md LICENSE \
+                release-staging/${{ steps.meta.outputs.id }}/
+          cd release-staging
+          zip -r ../${{ steps.meta.outputs.id }}-${{ steps.meta.outputs.version }}.zip ${{ steps.meta.outputs.id }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ steps.meta.outputs.id }}-${{ steps.meta.outputs.version }}.zip
+          generate_release_notes: true
