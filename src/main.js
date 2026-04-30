@@ -3,7 +3,7 @@ import "@logseq/libs";
 async function deleteEmptyJournals() {
   const settings = logseq.settings || {};
   const daysBack = parseInt(settings.daysBack ?? 30, 10) || 0;
-  const dryRun = settings.dryRun ?? false;
+  const dryRun = settings.dryRun ?? true;
 
   const today = new Date();
   const todayStr = today.toISOString().slice(0, 10);
@@ -57,9 +57,9 @@ function main() {
     {
       key: "dryRun",
       type: "boolean",
-      default: false,
+      default: true,
       title: "Dry run",
-      description: "If enabled, only counts empty journals without deleting them.",
+      description: "If enabled, only counts empty journals without deleting them. Turn off to actually delete.",
     },
   ]);
 
