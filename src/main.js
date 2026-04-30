@@ -56,10 +56,13 @@ async function deleteEmptyJournals() {
 
   const pages = await logseq.Editor.getAllPages();
   const journals = (pages || []).filter((p) => {
-    if (!p["journal?"]) return false;
+    // Logseq's API returns these in camelCase (e.g. journalDay), but older
+    // versions/builds have used kebab-case keys. Accept both for safety.
+    const isJournal = p["journal?"] ?? p.journal ?? false;
+    if (!isJournal) return false;
     // Require journal-day so date comparisons are reliable; pages without it
     // are skipped to avoid silently bypassing the look-back window.
-    const jday = p["journal-day"];
+    const jday = p["journal-day"] ?? p.journalDay;
     if (!jday) return false;
     if (jday === todayJDay) return false;
     if (cutoffJDay !== null && jday < cutoffJDay) return false;
@@ -107,8 +110,10 @@ async function deleteEmptyJournals() {
   if (count > 0) console.log("Deleted targets:", targets);
   console.groupEnd();
 
-  const trimSummary = trimEmptyBlocks && trimmedBlockCount > 0
-    ? `${trimmedBlockCount} empty block(s) ${dryRun ? "would be trimmed" : "trimmed"} from ${trimmedPages.length} page(s).\n\n`
+  const trimSummary = trimEmptyBlocks
+    ? (trimmedBlockCount > 0
+        ? `${trimmedBlockCount} empty block(s) ${dryRun ? "would be trimmed" : "trimmed"} from ${trimmedPages.length} page(s).\n\n`
+        : `No leading/trailing empty blocks found${rangeLabel}.\n\n`)
     : "";
 
   if (dryRun) {
@@ -137,8 +142,10 @@ async function deleteEmptyJournals() {
       (count > 0
         ? `Deleted ${count} empty journal(s)${rangeLabel}.`
         : `No empty journals found${rangeLabel}.`) +
-        (trimEmptyBlocks && trimmedBlockCount > 0
-          ? `\nTrimmed ${trimmedBlockCount} empty block(s) from ${trimmedPages.length} page(s).`
+        (trimEmptyBlocks
+          ? (trimmedBlockCount > 0
+              ? `\nTrimmed ${trimmedBlockCount} empty block(s) from ${trimmedPages.length} page(s).`
+              : `\nNo leading/trailing empty blocks found.`)
           : ""),
       "success"
     );
