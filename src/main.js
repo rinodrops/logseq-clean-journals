@@ -87,9 +87,9 @@ function main() {
     {
       key: "dryRun",
       type: "boolean",
-      default: false,
+      default: true,
       title: "Dry run",
-      description: "If enabled, only counts empty journals without deleting them.",
+      description: "If enabled, only counts empty journals without deleting them. Turn off to actually delete.",
     },
   ]);
 
