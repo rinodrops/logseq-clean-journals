@@ -2,7 +2,7 @@ import "@logseq/libs";
 
 async function deleteEmptyJournals() {
   const settings = logseq.settings || {};
-  const daysBack = parseInt(settings.daysBack ?? 30, 10) || 0;
+  const daysBack = parseInt(settings.daysBack ?? 10, 10) || 0;
   const dryRun = settings.dryRun ?? false;
 
   const today = new Date();
@@ -23,7 +23,7 @@ async function deleteEmptyJournals() {
     return true;
   });
 
-  let count = 0;
+  const targets = [];
   for (const page of journals) {
     const blocks = await logseq.Editor.getPageBlocksTree(page.name);
     const isEmpty =
@@ -32,17 +32,47 @@ async function deleteEmptyJournals() {
       (blocks.length === 1 && (!blocks[0].content || blocks[0].content.trim() === ""));
     if (isEmpty) {
       if (!dryRun) await logseq.Editor.deletePage(page.name);
-      count++;
+      targets.push(page.name);
     }
   }
 
+  const count = targets.length;
   const rangeLabel = daysBack > 0 ? ` (last ${daysBack} days)` : "";
-  const dryLabel = dryRun ? " [Dry run]" : "";
-  logseq.App.showMsg(
-    count > 0
-      ? `${dryLabel}Deleted ${count} empty journal(s)${rangeLabel}.`
-      : `${dryLabel}No empty journals found${rangeLabel}.`
-  );
+
+  console.group("[logseq-clean-journals]");
+  console.log(`Mode: ${dryRun ? "Dry run" : "Delete"}`);
+  console.log(`Range: ${daysBack > 0 ? `last ${daysBack} days` : "all"}`);
+  console.log(`Target count: ${count}`);
+  if (count > 0) console.log("Targets:", targets);
+  console.groupEnd();
+
+  if (dryRun) {
+    if (count > 0) {
+      const list = targets.map((n) => `- ${n}`).join("\n");
+      logseq.App.showMsg(
+        `⚠️ DRY RUN MODE — Nothing was deleted.\n\n` +
+          `${count} empty journal(s) would be deleted${rangeLabel}:\n` +
+          `${list}\n\n` +
+          `To actually delete, uncheck "Dry run" in plugin settings.`,
+        "warning",
+        { timeout: 0 }
+      );
+    } else {
+      logseq.App.showMsg(
+        `⚠️ DRY RUN MODE — Nothing was deleted.\n\n` +
+          `No empty journals found${rangeLabel}.`,
+        "warning",
+        { timeout: 0 }
+      );
+    }
+  } else {
+    logseq.App.showMsg(
+      count > 0
+        ? `Deleted ${count} empty journal(s)${rangeLabel}.`
+        : `No empty journals found${rangeLabel}.`,
+      "success"
+    );
+  }
 }
 
 function main() {
@@ -50,7 +80,7 @@ function main() {
     {
       key: "daysBack",
       type: "number",
-      default: 30,
+      default: 10,
       title: "Days to look back",
       description: "How many past days to scan for empty journals. Set to 0 to scan all.",
     },
