@@ -50,7 +50,7 @@ async function deleteEmptyJournals() {
     if (count > 0) {
       const list = targets.map((n) => `- ${n}`).join("\n");
       logseq.App.showMsg(
-        `⚠️ DRY RUN MODE — Nothing was deleted.\n\n` +
+        `DRY RUN MODE. Nothing was deleted.\n\n` +
           `${count} empty journal(s) would be deleted${rangeLabel}:\n` +
           `${list}\n\n` +
           `To actually delete, uncheck "Dry run" in plugin settings.`,
@@ -59,7 +59,7 @@ async function deleteEmptyJournals() {
       );
     } else {
       logseq.App.showMsg(
-        `⚠️ DRY RUN MODE — Nothing was deleted.\n\n` +
+        `DRY RUN MODE. Nothing was deleted.\n\n` +
           `No empty journals found${rangeLabel}.`,
         "warning",
         { timeout: 0 }
