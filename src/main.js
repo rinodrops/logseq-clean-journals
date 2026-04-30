@@ -43,20 +43,26 @@ async function deleteEmptyJournals() {
   const trimEmptyBlocks = settings.trimEmptyBlocks ?? false;
 
   const today = new Date();
-  const todayStr = today.toISOString().slice(0, 10);
+  const todayJDay =
+    today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
 
-  const cutoff = daysBack > 0
-    ? new Date(today.getTime() - daysBack * 86400000)
-    : null;
+  // Compute cutoff as a journal-day integer (YYYYMMDD) to match Logseq's
+  // representation and avoid timezone drift.
+  let cutoffJDay = null;
+  if (daysBack > 0) {
+    const c = new Date(today.getFullYear(), today.getMonth(), today.getDate() - daysBack);
+    cutoffJDay = c.getFullYear() * 10000 + (c.getMonth() + 1) * 100 + c.getDate();
+  }
 
   const pages = await logseq.Editor.getAllPages();
   const journals = (pages || []).filter((p) => {
-    if (!p["journal?"] || p.name === todayStr) return false;
-    if (cutoff && p["journal-day"]) {
-      const d = String(p["journal-day"]);
-      const pageDate = new Date(`${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`);
-      if (pageDate < cutoff) return false;
-    }
+    if (!p["journal?"]) return false;
+    // Require journal-day so date comparisons are reliable; pages without it
+    // are skipped to avoid silently bypassing the look-back window.
+    const jday = p["journal-day"];
+    if (!jday) return false;
+    if (jday === todayJDay) return false;
+    if (cutoffJDay !== null && jday < cutoffJDay) return false;
     return true;
   });
 
