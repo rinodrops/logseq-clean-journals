@@ -37,7 +37,7 @@ Click the trash-can icon in the toolbar. A notification will confirm how many em
 
 | Setting           | Default | Description                                                        |
 | ----------------- | ------- | ------------------------------------------------------------------ |
-| Days to look back | `30`    | Number of past days to scan. Set to `0` to scan all journal pages. |
+| Days to look back | `10`    | Number of past days to scan. Set to `0` to scan all journal pages. |
 | Dry run           | `true`  | Counts empty journals without deleting them. Turn off to actually delete. |
 
 Settings are accessible via Logseq → `...` → Plugins → Clean Empty Journals → Settings.
