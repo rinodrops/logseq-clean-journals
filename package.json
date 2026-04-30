@@ -1,6 +1,6 @@
 {
   "name": "logseq-clean-journals",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Automatically removes empty journal pages from your Logseq graph with a single toolbar click.",
   "author": "Rino",
   "license": "MIT",
