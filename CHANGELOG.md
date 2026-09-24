@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+- Added support for DB graphs by querying journals from `:block/journal-day`, using UUID-based page operations, and reading block titles from the DB data model.
+- Excluded journals already moved to the recycle bin from subsequent cleanup runs.
+
 ## 0.4.0
 - Added "Trim leading/trailing empty blocks" setting (opt-in, default off). When enabled, consecutive empty blocks at the top and bottom of each in-scope journal page are removed. Today's journal is excluded; empty blocks in the middle are preserved. Honors Dry run.
 

@@ -4,6 +4,8 @@
 
 A [Logseq](https://logseq.com) plugin that removes empty journal pages from your graph with a single toolbar click.
 
+Supports Logseq DB graphs and file graphs.
+
 Logseq automatically creates a journal page for the current day on startup. Over time, days on which you made no notes accumulate as empty pages. This plugin lets you clean them up instantly.
 
 ## Features

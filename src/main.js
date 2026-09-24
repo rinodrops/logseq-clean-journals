@@ -3,11 +3,32 @@ import "@logseq/libs";
 function isEmptyBlock(block) {
   if (!block) return false;
   if (block.children && block.children.length > 0) return false;
-  return !block.content || block.content.trim() === "";
+  if (block.properties && Object.keys(block.properties).length > 0) return false;
+
+  // `title` is canonical in DB graphs; `content` is its deprecated alias.
+  // If neither is present, this may be a DB property-value helper block.
+  const text = block.title ?? block.content;
+  return typeof text === "string" && text.trim() === "";
+}
+
+function journalLabel(page) {
+  return page.title || page.name || String(page["journal-day"] ?? page.journalDay ?? page.uuid);
+}
+
+async function getJournals() {
+  const rows = await logseq.DB.datascriptQuery(`
+    [:find (pull ?page [:block/uuid :block/name :block/title :block/journal-day])
+     :where
+     [?page :block/journal-day]
+     [(missing? $ ?page :logseq.property/deleted-at)]]
+  `);
+
+  // Datascript :find results are rows, with the pulled page as the first value.
+  return (rows || []).map((row) => Array.isArray(row) ? row[0] : row).filter(Boolean);
 }
 
 async function trimJournalPage(page, dryRun) {
-  const blocks = await logseq.Editor.getPageBlocksTree(page.name);
+  const blocks = await logseq.Editor.getPageBlocksTree(page.uuid);
   if (!blocks || blocks.length === 0) return 0;
 
   const trimTargets = [];
@@ -54,20 +75,18 @@ async function deleteEmptyJournals() {
     cutoffJDay = c.getFullYear() * 10000 + (c.getMonth() + 1) * 100 + c.getDate();
   }
 
-  const pages = await logseq.Editor.getAllPages();
-  const journals = (pages || []).filter((p) => {
-    // Logseq's API returns these in camelCase (e.g. journalDay), but older
-    // versions/builds have used kebab-case keys. Accept both for safety.
-    const isJournal = p["journal?"] ?? p.journal ?? false;
-    if (!isJournal) return false;
-    // Require journal-day so date comparisons are reliable; pages without it
-    // are skipped to avoid silently bypassing the look-back window.
-    const jday = p["journal-day"] ?? p.journalDay;
-    if (!jday) return false;
-    if (jday === todayJDay) return false;
-    if (cutoffJDay !== null && jday < cutoffJDay) return false;
-    return true;
-  });
+  const pages = await getJournals();
+  const journals = pages
+    .filter((p) => {
+      const jday = p["journal-day"] ?? p.journalDay;
+      if (!jday) return false;
+      if (jday === todayJDay) return false;
+      if (cutoffJDay !== null && jday < cutoffJDay) return false;
+      return true;
+    })
+    .sort((a, b) =>
+      (a["journal-day"] ?? a.journalDay) - (b["journal-day"] ?? b.journalDay)
+    );
 
   // Trim leading/trailing empty blocks first, so a page that becomes empty
   // can still be picked up by the deletion pass below.
@@ -78,21 +97,19 @@ async function deleteEmptyJournals() {
       const n = await trimJournalPage(page, dryRun);
       if (n > 0) {
         trimmedBlockCount += n;
-        trimmedPages.push({ name: page.name, count: n });
+        trimmedPages.push({ name: journalLabel(page), count: n });
       }
     }
   }
 
   const targets = [];
   for (const page of journals) {
-    const blocks = await logseq.Editor.getPageBlocksTree(page.name);
-    const isEmpty =
-      !blocks ||
-      blocks.length === 0 ||
-      (blocks.length === 1 && (!blocks[0].content || blocks[0].content.trim() === ""));
+    const blocks = await logseq.Editor.getPageBlocksTree(page.uuid);
+    // `null` means the page could not be resolved, not that it is empty.
+    const isEmpty = Array.isArray(blocks) && (blocks.length === 0 || blocks.every(isEmptyBlock));
     if (isEmpty) {
-      if (!dryRun) await logseq.Editor.deletePage(page.name);
-      targets.push(page.name);
+      if (!dryRun) await logseq.Editor.deletePage(page.uuid);
+      targets.push(journalLabel(page));
     }
   }
 
