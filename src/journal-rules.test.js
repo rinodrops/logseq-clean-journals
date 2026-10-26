@@ -1,0 +1,117 @@
+"use strict";
+
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const {
+  DB_JOURNAL_QUERY,
+  journalDayFromDate,
+  cutoffJournalDay,
+  selectFileJournals,
+  selectDbJournals,
+  blockText,
+  isEmptyBlock,
+  isPageEmpty,
+  trimTargetBlocks,
+  journalLabel,
+  pageName,
+} = require("./journal-rules.js");
+
+const today = new Date(2026, 9, 27);
+
+test("journal day uses the local calendar date", () => {
+  assert.equal(journalDayFromDate(new Date(2026, 0, 5)), 20260105);
+  assert.equal(journalDayFromDate(today), 20261027);
+});
+
+test("look-back window drops today, older days, and pages without a journal day", () => {
+  const pages = [
+    { name: "today", "journal?": true, journalDay: 20261027 },
+    { name: "yesterday", "journal?": true, "journal-day": 20261026 },
+    { name: "edge", journal: true, journalDay: 20261017 },
+    { name: "too-old", "journal?": true, journalDay: 20261016 },
+    { name: "future", "journal?": true, journalDay: 20261028 },
+    { name: "not-journal", "journal?": false, journalDay: 20261026 },
+    { name: "no-day", "journal?": true },
+  ];
+
+  assert.deepEqual(
+    selectFileJournals(pages, today, 10).map((page) => page.name),
+    ["yesterday", "edge", "future"]
+  );
+  assert.deepEqual(
+    selectFileJournals(pages, today, 0).map((page) => page.name),
+    ["yesterday", "edge", "too-old", "future"]
+  );
+  assert.equal(cutoffJournalDay(today, 10), 20261017);
+  assert.equal(cutoffJournalDay(today, 0), null);
+});
+
+test("DB query rows use journal-day and skip recycled pages via the query itself", () => {
+  assert.match(DB_JOURNAL_QUERY, /:block\/journal-day/);
+  assert.match(DB_JOURNAL_QUERY, /:logseq.property\/deleted-at/);
+  assert.doesNotMatch(DB_JOURNAL_QUERY, /:block\/journal\?/);
+
+  const rows = [
+    [{ name: "oct 26th, 2026", title: "Oct 26th, 2026", "journal-day": 20261026 }],
+    [null],
+    { name: "today", title: "Oct 27th, 2026", "journal-day": 20261027 },
+    [{ name: "old", "journal-day": 20260101 }],
+  ];
+
+  assert.deepEqual(
+    selectDbJournals(rows, today, 10).map((page) => page.name),
+    ["oct 26th, 2026"]
+  );
+});
+
+test("block text prefers non-blank content, then title", () => {
+  assert.equal(blockText({ content: "  hello  ", title: "ignored" }), "hello");
+  assert.equal(blockText({ content: "   ", title: " from title " }), "from title");
+  assert.equal(blockText({ content: "", title: "" }), "");
+  assert.equal(blockText({ title: "db only" }), "db only");
+  assert.equal(blockText({ content: "file only" }), "file only");
+  assert.equal(blockText(null), "");
+  assert.equal(blockText(["uuid", 1]), "");
+});
+
+test("a page is empty only when the whole tree has no text", () => {
+  assert.equal(isPageEmpty(null), false);
+  assert.equal(isPageEmpty([]), true);
+  assert.equal(isPageEmpty([{ content: "   " }, { content: "" }]), true);
+  assert.equal(
+    isPageEmpty([{ content: "", children: [{ content: "kept" }] }]),
+    false
+  );
+  assert.equal(
+    isPageEmpty([{ content: "   ", title: "   ", children: [{ content: "  " }] }]),
+    true
+  );
+  assert.equal(isPageEmpty([{ content: "", children: [["uuid-tuple"]] }]), false);
+  assert.equal(isEmptyBlock({ content: "", children: [{ content: "x" }] }), false);
+  assert.equal(isEmptyBlock({ content: "   ", title: "note" }), false);
+});
+
+test("trim targets are leading and trailing blank blocks, never a fully blank page", () => {
+  const blocks = [
+    { uuid: "a", content: "" },
+    { uuid: "b", content: "  " },
+    { uuid: "c", content: "note" },
+    { uuid: "d", content: "", children: [{ content: "child" }] },
+    { uuid: "e", title: "   ", content: "" },
+  ];
+  assert.deepEqual(
+    trimTargetBlocks(blocks).map((block) => block.uuid),
+    ["a", "b", "e"]
+  );
+  assert.deepEqual(trimTargetBlocks([{ uuid: "a", content: "" }, { uuid: "b", content: " " }]), []);
+  assert.deepEqual(trimTargetBlocks(null), []);
+  assert.deepEqual(trimTargetBlocks([]), []);
+});
+
+test("labels prefer title and deletion still needs the page name", () => {
+  assert.equal(journalLabel({ title: "Oct 26th, 2026", name: "oct 26th, 2026" }), "Oct 26th, 2026");
+  assert.equal(journalLabel({ name: "oct 26th, 2026" }), "oct 26th, 2026");
+  assert.equal(pageName({ name: "oct 26th, 2026" }), "oct 26th, 2026");
+  assert.equal(pageName({ title: "Oct 26th, 2026" }), null);
+  assert.equal(pageName({ name: "" }), null);
+});

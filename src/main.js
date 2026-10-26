@@ -1,39 +1,52 @@
 import "@logseq/libs";
+import {
+  DB_JOURNAL_QUERY,
+  cutoffJournalDay,
+  isPageEmpty,
+  journalDayFromDate,
+  journalLabel,
+  pageName,
+  selectDbJournals,
+  selectFileJournals,
+  trimTargetBlocks,
+} from "./journal-rules.js";
 
-function isEmptyBlock(block) {
-  if (!block) return false;
-  if (block.children && block.children.length > 0) return false;
-  return !block.content || block.content.trim() === "";
+async function currentGraphIsDb() {
+  const check = logseq.App && logseq.App.checkCurrentIsDbGraph;
+  if (typeof check !== "function") return false;
+  try {
+    return Boolean(await check());
+  } catch (err) {
+    console.warn("[logseq-clean-journals] DB graph check failed; using file-graph lookup.", err);
+    return false;
+  }
+}
+
+async function listJournals(today, daysBack) {
+  if (await currentGraphIsDb()) {
+    const rows = await logseq.DB.datascriptQuery(DB_JOURNAL_QUERY);
+    return selectDbJournals(rows, today, daysBack);
+  }
+
+  const pages = await logseq.Editor.getAllPages();
+  return selectFileJournals(pages, today, daysBack);
+}
+
+async function pageBlocks(page) {
+  const name = pageName(page);
+  if (!name) return null;
+  return logseq.Editor.getPageBlocksTree(name);
 }
 
 async function trimJournalPage(page, dryRun) {
-  const blocks = await logseq.Editor.getPageBlocksTree(page.name);
-  if (!blocks || blocks.length === 0) return 0;
-
-  const trimTargets = [];
-
-  // Leading empty blocks
-  for (let i = 0; i < blocks.length; i++) {
-    if (isEmptyBlock(blocks[i])) trimTargets.push(blocks[i]);
-    else break;
-  }
-
-  // Stop if every block is empty (the page itself is empty;
-  // leave it for the page-deletion pass to handle).
-  if (trimTargets.length === blocks.length) return 0;
-
-  // Trailing empty blocks
-  for (let i = blocks.length - 1; i >= 0; i--) {
-    if (isEmptyBlock(blocks[i])) trimTargets.push(blocks[i]);
-    else break;
-  }
-
+  const blocks = await pageBlocks(page);
+  const targets = trimTargetBlocks(blocks);
   if (!dryRun) {
-    for (const b of trimTargets) {
-      await logseq.Editor.removeBlock(b.uuid);
+    for (const block of targets) {
+      if (block.uuid) await logseq.Editor.removeBlock(block.uuid);
     }
   }
-  return trimTargets.length;
+  return targets.length;
 }
 
 async function deleteEmptyJournals() {
@@ -43,31 +56,9 @@ async function deleteEmptyJournals() {
   const trimEmptyBlocks = settings.trimEmptyBlocks ?? false;
 
   const today = new Date();
-  const todayJDay =
-    today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
-
-  // Compute cutoff as a journal-day integer (YYYYMMDD) to match Logseq's
-  // representation and avoid timezone drift.
-  let cutoffJDay = null;
-  if (daysBack > 0) {
-    const c = new Date(today.getFullYear(), today.getMonth(), today.getDate() - daysBack);
-    cutoffJDay = c.getFullYear() * 10000 + (c.getMonth() + 1) * 100 + c.getDate();
-  }
-
-  const pages = await logseq.Editor.getAllPages();
-  const journals = (pages || []).filter((p) => {
-    // Logseq's API returns these in camelCase (e.g. journalDay), but older
-    // versions/builds have used kebab-case keys. Accept both for safety.
-    const isJournal = p["journal?"] ?? p.journal ?? false;
-    if (!isJournal) return false;
-    // Require journal-day so date comparisons are reliable; pages without it
-    // are skipped to avoid silently bypassing the look-back window.
-    const jday = p["journal-day"] ?? p.journalDay;
-    if (!jday) return false;
-    if (jday === todayJDay) return false;
-    if (cutoffJDay !== null && jday < cutoffJDay) return false;
-    return true;
-  });
+  const journals = (await listJournals(today, daysBack)).sort(
+    (a, b) => (a["journal-day"] ?? a.journalDay ?? 0) - (b["journal-day"] ?? b.journalDay ?? 0)
+  );
 
   // Trim leading/trailing empty blocks first, so a page that becomes empty
   // can still be picked up by the deletion pass below.
@@ -78,22 +69,19 @@ async function deleteEmptyJournals() {
       const n = await trimJournalPage(page, dryRun);
       if (n > 0) {
         trimmedBlockCount += n;
-        trimmedPages.push({ name: page.name, count: n });
+        trimmedPages.push({ name: journalLabel(page), count: n });
       }
     }
   }
 
   const targets = [];
   for (const page of journals) {
-    const blocks = await logseq.Editor.getPageBlocksTree(page.name);
-    const isEmpty =
-      !blocks ||
-      blocks.length === 0 ||
-      (blocks.length === 1 && (!blocks[0].content || blocks[0].content.trim() === ""));
-    if (isEmpty) {
-      if (!dryRun) await logseq.Editor.deletePage(page.name);
-      targets.push(page.name);
-    }
+    const name = pageName(page);
+    if (!name) continue;
+    const blocks = await logseq.Editor.getPageBlocksTree(name);
+    if (!isPageEmpty(blocks)) continue;
+    if (!dryRun) await logseq.Editor.deletePage(name);
+    targets.push(journalLabel(page));
   }
 
   const count = targets.length;
@@ -102,6 +90,8 @@ async function deleteEmptyJournals() {
   console.group("[logseq-clean-journals]");
   console.log(`Mode: ${dryRun ? "Dry run" : "Delete"}`);
   console.log(`Range: ${daysBack > 0 ? `last ${daysBack} days` : "all"}`);
+  console.log(`Today: ${journalDayFromDate(today)}`);
+  console.log(`Cutoff: ${cutoffJournalDay(today, daysBack) ?? "none"}`);
   if (trimEmptyBlocks) {
     console.log(`Trimmed empty blocks: ${trimmedBlockCount} across ${trimmedPages.length} page(s)`);
     if (trimmedPages.length > 0) console.log("Trimmed pages:", trimmedPages);
