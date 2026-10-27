@@ -67,6 +67,10 @@ Releases are built and published automatically by GitHub Actions when a `v*` tag
 
 See [CHANGELOG.md](./CHANGELOG.md).
 
+## Acknowledgements
+
+- [Ricky Lopez](https://github.com/rickyelopez) reported that the plugin did not work on DB graphs ([#10](https://github.com/rinodrops/logseq-clean-journals/issues/10)) and proposed an initial implementation ([#11](https://github.com/rinodrops/logseq-clean-journals/pull/11)).
+
 ## License
 
 MIT
