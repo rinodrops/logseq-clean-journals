@@ -2,6 +2,9 @@ import "@logseq/libs";
 import {
   DB_JOURNAL_QUERY,
   cutoffJournalDay,
+  emptyJournalDecision,
+  hasIncomingLink,
+  hasUserPropertyValue,
   isPageEmpty,
   journalDayFromDate,
   journalLabel,
@@ -49,11 +52,38 @@ async function trimJournalPage(page, dryRun) {
   return targets.length;
 }
 
+async function propertyStateFor(name, blocks) {
+  const read = logseq.Editor && logseq.Editor.getPageProperties;
+  if (typeof read !== "function") return "unknown";
+  try {
+    const pageProps = await read(name);
+    return hasUserPropertyValue(pageProps, blocks) ? "present" : "absent";
+  } catch (err) {
+    console.warn("[logseq-clean-journals] Property lookup failed; keeping the page.", name, err);
+    return "unknown";
+  }
+}
+
+async function backlinkStateFor(name) {
+  const read = logseq.Editor && logseq.Editor.getPageLinkedReferences;
+  if (typeof read !== "function") return "unknown";
+  try {
+    const refs = await read(name);
+    if (refs == null) return "unknown";
+    return hasIncomingLink(refs, name) ? "present" : "absent";
+  } catch (err) {
+    console.warn("[logseq-clean-journals] Backlink lookup failed; keeping the page.", name, err);
+    return "unknown";
+  }
+}
+
 async function deleteEmptyJournals() {
   const settings = logseq.settings || {};
   const daysBack = parseInt(settings.daysBack ?? 10, 10) || 0;
   const dryRun = settings.dryRun ?? false;
   const trimEmptyBlocks = settings.trimEmptyBlocks ?? false;
+  const keepProperties = settings.keepJournalsWithProperties !== false;
+  const keepBacklinks = settings.keepJournalsWithBacklinks === true;
 
   const today = new Date();
   const journals = (await listJournals(today, daysBack)).sort(
@@ -75,11 +105,24 @@ async function deleteEmptyJournals() {
   }
 
   const targets = [];
+  const kept = [];
   for (const page of journals) {
     const name = pageName(page);
     if (!name) continue;
     const blocks = await logseq.Editor.getPageBlocksTree(name);
     if (!isPageEmpty(blocks)) continue;
+    const propertyState = keepProperties ? await propertyStateFor(name, blocks) : "absent";
+    const backlinkState = keepBacklinks ? await backlinkStateFor(name) : "absent";
+    const reason = emptyJournalDecision({
+      keepProperties,
+      propertyState,
+      keepBacklinks,
+      backlinkState,
+    });
+    if (reason) {
+      kept.push({ name: journalLabel(page), reason });
+      continue;
+    }
     if (!dryRun) await logseq.Editor.deletePage(name);
     targets.push(journalLabel(page));
   }
@@ -98,6 +141,8 @@ async function deleteEmptyJournals() {
   }
   console.log(`Deleted page count: ${count}`);
   if (count > 0) console.log("Deleted targets:", targets);
+  console.log(`Kept page count: ${kept.length}`);
+  if (kept.length > 0) console.log("Kept pages:", kept);
   console.groupEnd();
 
   const trimSummary = trimEmptyBlocks
@@ -164,6 +209,20 @@ function main() {
       default: false,
       title: "Trim leading/trailing empty blocks",
       description: "If enabled, also remove consecutive empty blocks at the top and bottom of each in-scope journal page. Today's journal is excluded. Empty blocks in the middle are preserved.",
+    },
+    {
+      key: "keepJournalsWithProperties",
+      type: "boolean",
+      default: true,
+      title: "Keep journals that have properties",
+      description: "When enabled, a journal with a user-defined property value is not deleted even if its blocks are blank. Built-in values such as created time are ignored.",
+    },
+    {
+      key: "keepJournalsWithBacklinks",
+      type: "boolean",
+      default: false,
+      title: "Keep journals that have backlinks",
+      description: "When enabled, a journal linked from another page is not deleted even if its blocks are blank.",
     },
   ]);
 

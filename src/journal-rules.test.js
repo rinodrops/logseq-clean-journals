@@ -12,6 +12,10 @@ const {
   isEmptyBlock,
   isPageEmpty,
   trimTargetBlocks,
+  isBuiltinPropertyKey,
+  hasUserPropertyValue,
+  hasIncomingLink,
+  emptyJournalDecision,
   journalLabel,
   pageName,
 } = require("./journal-rules.js");
@@ -106,6 +110,120 @@ test("trim targets are leading and trailing blank blocks, never a fully blank pa
   assert.deepEqual(trimTargetBlocks([{ uuid: "a", content: "" }, { uuid: "b", content: " " }]), []);
   assert.deepEqual(trimTargetBlocks(null), []);
   assert.deepEqual(trimTargetBlocks([]), []);
+});
+
+test("built-in property keys and empty values do not count as user data", () => {
+  assert.equal(isBuiltinPropertyKey(":logseq.property/created-at"), true);
+  assert.equal(isBuiltinPropertyKey("logseq.class/Journal"), true);
+  assert.equal(isBuiltinPropertyKey(":logseq.task/status"), true);
+  assert.equal(isBuiltinPropertyKey("block/updated-at"), true);
+  assert.equal(isBuiltinPropertyKey(":user.property/mood"), false);
+  assert.equal(isBuiltinPropertyKey("mood"), false);
+
+  const builtin = {
+    ":logseq.property/created-at": 1710000000000,
+    ":logseq.property/updated-at": 1710000000000,
+    ":block/tags": ["Journal"],
+    ":block/journal-day": 20261026,
+    mood: "   ",
+    alias: [],
+    emptyObj: {},
+  };
+  assert.equal(hasUserPropertyValue(builtin, []), false);
+  assert.equal(hasUserPropertyValue({ ":user.property/mood": "ok" }, []), true);
+  assert.equal(hasUserPropertyValue({ rating: 0 }, []), true);
+  assert.equal(hasUserPropertyValue({ done: false }, []), true);
+  assert.equal(
+    hasUserPropertyValue(null, [{ content: "", properties: { place: "home" }, children: [] }]),
+    true
+  );
+  assert.equal(
+    hasUserPropertyValue({}, [{ content: "", children: [{ properties: { note: "" } }] }]),
+    false
+  );
+});
+
+test("incoming links ignore the journal itself", () => {
+  const self = [[{ name: "oct 26th, 2026" }, [{ content: "[[Oct 26th, 2026]]" }]]];
+  assert.equal(hasIncomingLink(self, "oct 26th, 2026"), false);
+  assert.equal(hasIncomingLink(null, "oct 26th, 2026"), false);
+  assert.equal(
+    hasIncomingLink(
+      [
+        [{ name: "oct 26th, 2026" }, [{ content: "self" }]],
+        [{ name: "Meetings" }, [{ content: "[[Oct 26th, 2026]]" }]],
+      ],
+      "Oct 26th, 2026"
+    ),
+    true
+  );
+  assert.equal(hasIncomingLink([[{ name: "Meetings" }, []]], "oct 26th, 2026"), false);
+});
+
+test("property protection and backlink protection decide whether an empty journal is deleted", () => {
+  assert.equal(
+    emptyJournalDecision({
+      keepProperties: true,
+      propertyState: "present",
+      keepBacklinks: false,
+      backlinkState: "absent",
+    }),
+    "properties"
+  );
+  assert.equal(
+    emptyJournalDecision({
+      keepProperties: true,
+      propertyState: "unknown",
+      keepBacklinks: false,
+      backlinkState: "absent",
+    }),
+    "properties-unreadable"
+  );
+  assert.equal(
+    emptyJournalDecision({
+      keepProperties: false,
+      propertyState: "present",
+      keepBacklinks: false,
+      backlinkState: "present",
+    }),
+    null
+  );
+  assert.equal(
+    emptyJournalDecision({
+      keepProperties: true,
+      propertyState: "absent",
+      keepBacklinks: false,
+      backlinkState: "present",
+    }),
+    null
+  );
+  assert.equal(
+    emptyJournalDecision({
+      keepProperties: true,
+      propertyState: "absent",
+      keepBacklinks: true,
+      backlinkState: "present",
+    }),
+    "backlinks"
+  );
+  assert.equal(
+    emptyJournalDecision({
+      keepProperties: true,
+      propertyState: "absent",
+      keepBacklinks: true,
+      backlinkState: "unknown",
+    }),
+    "backlinks-unreadable"
+  );
+  assert.equal(
+    emptyJournalDecision({
+      keepProperties: true,
+      propertyState: "absent",
+      keepBacklinks: true,
+      backlinkState: "absent",
+    }),
+    null
+  );
 });
 
 test("labels prefer title and deletion still needs the page name", () => {

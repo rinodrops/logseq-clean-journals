@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.0
+- Keep journals that have a user-defined property value, even when their blocks are blank. Built-in values such as created time are ignored. Turn off "Keep journals that have properties" to delete these journals.
+- Added "Keep journals that have backlinks" (default off). When enabled, a journal linked from another page is kept even when its blocks are blank.
+- The plugin runs in the Logseq desktop app and in the browser at app.logseq.com. Native mobile apps do not load plugins.
+
 ## 0.5.0
 - Added Logseq DB graph support. DB graphs are detected with `checkCurrentIsDbGraph`, and journals are queried by `:block/journal-day`. File graphs keep the existing page listing. Journals already in the DB recycle bin are skipped.
 - Block text is read from `content` when it is non-blank, otherwise from `title`, so DB blocks are not treated as empty.
