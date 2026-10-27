@@ -2,7 +2,7 @@
 
 ![Plugin icon: a trash can](./icon.png)
 
-A [Logseq](https://logseq.com) plugin that removes empty journal pages from your graph with a single toolbar click.
+A [Logseq](https://logseq.com) plugin that removes empty journal pages from your graph with a single toolbar click. It supports both DB graphs and file graphs.
 
 Logseq automatically creates a journal page for the current day on startup. Over time, days on which you made no notes accumulate as empty pages. This plugin lets you clean them up instantly.
 
@@ -49,12 +49,14 @@ Settings are accessible via Logseq → `...` → Plugins → Clean Empty Journal
 
 - This plugin works only in the Logseq desktop app. It is not available on mobile or in the browser.
 - Today's journal page is always excluded from deletion.
-- Journal pages that have content are never affected.
+- Journal pages that have block text are never affected. A page whose blocks are all blank is removed. On a DB graph, a journal that only has property values and no block text is treated as empty.
+- On a DB graph, deleting a journal moves it to the recycle bin, where it can be restored for up to 30 days. It does not delete a Markdown file.
 
 ## Development
 
 ```bash
 npm install
+npm test        # pure journal rules, no Logseq required
 npm run build   # bundles src/main.js to dist/main.js
 npm run dev     # rebuild on change
 ```
@@ -64,6 +66,10 @@ Releases are built and published automatically by GitHub Actions when a `v*` tag
 ## Changelog
 
 See [CHANGELOG.md](./CHANGELOG.md).
+
+## Acknowledgements
+
+- [Ricky Lopez](https://github.com/rickyelopez) reported that the plugin did not work on DB graphs ([#10](https://github.com/rinodrops/logseq-clean-journals/issues/10)) and proposed an initial implementation ([#11](https://github.com/rinodrops/logseq-clean-journals/pull/11)).
 
 ## License
 
