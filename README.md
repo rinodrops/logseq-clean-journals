@@ -40,6 +40,8 @@ Click the trash-can icon in the toolbar. A notification will confirm how many em
 | Days to look back                    | `10`    | Number of past days to scan. Set to `0` to scan all journal pages.                                                                           |
 | Dry run                              | `true`  | Counts empty journals without deleting them. Turn off to actually delete.                                                                    |
 | Trim leading/trailing empty blocks   | `false` | When enabled, also remove consecutive empty blocks at the top and bottom of each in-scope journal page. Today's journal is excluded; middle empty blocks are preserved. |
+| Keep journals that have properties   | `true`  | A user-defined property value keeps the journal even when its blocks are blank. Built-in values such as created time are ignored. Turn off to delete these journals. |
+| Keep journals that have backlinks    | `false` | When enabled, a journal linked from another page is kept even when its blocks are blank. |
 
 Settings are accessible via Logseq → `...` → Plugins → Clean Empty Journals → Settings.
 
@@ -47,9 +49,9 @@ Settings are accessible via Logseq → `...` → Plugins → Clean Empty Journal
 
 ## Notes
 
-- This plugin works only in the Logseq desktop app. It is not available on mobile or in the browser.
+- This plugin runs in the Logseq desktop app and in the browser at [app.logseq.com](https://app.logseq.com). Native mobile apps do not load plugins.
 - Today's journal page is always excluded from deletion.
-- Journal pages that have block text are never affected. A page whose blocks are all blank is removed. On a DB graph, a journal that only has property values and no block text is treated as empty.
+- Journal pages that have block text are never affected. A page whose blocks are all blank is removed. A user-defined property value keeps the page unless "Keep journals that have properties" is turned off. Built-in values such as created time do not count. A backlink keeps the page only when "Keep journals that have backlinks" is turned on.
 - On a DB graph, deleting a journal moves it to the recycle bin, where it can be restored for up to 30 days. It does not delete a Markdown file.
 
 ## Development
