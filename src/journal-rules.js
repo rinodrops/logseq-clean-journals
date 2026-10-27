@@ -106,6 +106,90 @@ function trimTargetBlocks(blocks) {
   return targets;
 }
 
+const BUILTIN_PROPERTY_PREFIXES = [
+  "logseq.property",
+  "logseq.class",
+  "logseq.task",
+  "block/",
+];
+
+function isBuiltinPropertyKey(key) {
+  if (typeof key !== "string") return true;
+  const normalized = key.trim().replace(/^:+/, "").toLowerCase();
+  if (normalized === "") return true;
+  return BUILTIN_PROPERTY_PREFIXES.some((prefix) => normalized.startsWith(prefix));
+}
+
+function isEmptyPropertyValue(value) {
+  if (value == null) return true;
+  if (typeof value === "string") return value.trim() === "";
+  if (Array.isArray(value)) return value.every(isEmptyPropertyValue);
+  if (typeof value === "object") return Object.keys(value).length === 0;
+  return false;
+}
+
+function propertyMapHasUserValue(props) {
+  if (!props || typeof props !== "object" || Array.isArray(props)) return false;
+  return Object.entries(props).some(([key, value]) => {
+    if (isBuiltinPropertyKey(key)) return false;
+    return !isEmptyPropertyValue(value);
+  });
+}
+
+function collectBlockPropertyMaps(blocks, out) {
+  if (!Array.isArray(blocks)) return;
+  for (const block of blocks) {
+    if (!block || typeof block !== "object" || Array.isArray(block)) continue;
+    if (block.properties && typeof block.properties === "object" && !Array.isArray(block.properties)) {
+      out.push(block.properties);
+    }
+    if (Array.isArray(block.children)) collectBlockPropertyMaps(block.children, out);
+  }
+}
+
+function hasUserPropertyValue(pageProps, blocks) {
+  const maps = [];
+  if (pageProps && typeof pageProps === "object" && !Array.isArray(pageProps)) maps.push(pageProps);
+  collectBlockPropertyMaps(blocks, maps);
+  return maps.some(propertyMapHasUserValue);
+}
+
+function linkedReferenceSourceName(entry) {
+  if (!entry || typeof entry !== "object") return "";
+  const page = Array.isArray(entry) ? entry[0] : entry.page;
+  if (!page || typeof page !== "object" || Array.isArray(page)) return "";
+  if (typeof page.name === "string" && page.name !== "") return page.name;
+  if (typeof page["original-name"] === "string") return page["original-name"];
+  return "";
+}
+
+function linkedReferenceBlocks(entry) {
+  if (Array.isArray(entry)) return entry[1];
+  if (!entry || typeof entry !== "object") return null;
+  return entry.blocks;
+}
+
+function hasIncomingLink(linkedReferences, pageName) {
+  if (!Array.isArray(linkedReferences)) return false;
+  const self = String(pageName || "").trim().toLowerCase();
+  return linkedReferences.some((entry) => {
+    const blocks = linkedReferenceBlocks(entry);
+    if (!Array.isArray(blocks) || blocks.length === 0) return false;
+    const source = linkedReferenceSourceName(entry).trim().toLowerCase();
+    if (source !== "" && source === self) return false;
+    return true;
+  });
+}
+
+// null means delete. A reason string means keep the empty journal.
+function emptyJournalDecision({ keepProperties, propertyState, keepBacklinks, backlinkState }) {
+  if (keepProperties && propertyState === "present") return "properties";
+  if (keepProperties && propertyState === "unknown") return "properties-unreadable";
+  if (keepBacklinks && backlinkState === "present") return "backlinks";
+  if (keepBacklinks && backlinkState === "unknown") return "backlinks-unreadable";
+  return null;
+}
+
 function pageName(page) {
   return typeof page?.name === "string" && page.name !== "" ? page.name : null;
 }
@@ -133,6 +217,11 @@ module.exports = {
   isEmptyBlock,
   isPageEmpty,
   trimTargetBlocks,
+  isBuiltinPropertyKey,
+  isEmptyPropertyValue,
+  hasUserPropertyValue,
+  hasIncomingLink,
+  emptyJournalDecision,
   pageName,
   journalLabel,
 };
